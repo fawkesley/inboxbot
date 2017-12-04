@@ -1,0 +1,15 @@
+rules:
+
+  - search:
+      folder: "INBOX"
+      from: "alert@updown.io"
+      older_than_days: 3
+      subject: "[updown alert]"
+    action: "delete"
+
+  - search:
+      folder: "Archive"
+      from: "alert@updown.io"
+      older_than_days: 3
+      subject: "[updown alert]"
+    action: "delete"
