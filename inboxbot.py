@@ -132,6 +132,19 @@ class Mailbox():
 
         logging.info(f"{count} emails echoed")
 
+    def dump(self, message_set):
+        count = 0
+        for email_bytes in self.load_raw_emails(message_set):
+            count += 1
+
+            filename = f"email_{count}.eml"
+            logging.info(f"writing {filename}")
+
+            with io.open(filename, "wb") as f:
+                f.write(email_bytes)
+
+        logging.info(f"{count} emails dumped")
+
     def run_script(self, message_set, script_path):
         # TODO: move these out of Mailbox: they don't belong here
 
@@ -275,6 +288,7 @@ def run_rules(mailbox, rules):
         'mark_read': mailbox.mark_read,
         'unsubscribe': attempt_unsubscribe,
         'echo': mailbox.echo,
+        'dump': mailbox.dump,
         'run_script': mailbox.run_script,
     }
 
