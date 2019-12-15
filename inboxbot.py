@@ -9,6 +9,8 @@ import email.policy
 import imaplib
 import logging
 import os
+import shlex
+import subprocess
 import sys
 
 from email.parser import BytesParser
@@ -130,6 +132,38 @@ class Mailbox():
 
         logging.info(f"{count} emails echoed")
 
+    def run_script(self, message_set, script_path):
+        # TODO: move these out of Mailbox: they don't belong here
+
+        count = 0
+        for email_bytes in self.load_raw_emails(message_set):
+            count += 1
+
+            logging.info(f"sending email to {script_path}")
+            p = subprocess.Popen(
+                shlex.split(script_path),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            try:
+                stdout, stderr = p.communicate(email_bytes, timeout=15)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                stdout, stderr = p.communicate()
+
+            for line in stdout.decode("utf-8").splitlines():
+                logging.info(f"stdout> {line}")
+
+            for line in stderr.decode("utf-8").splitlines():
+                logging.info(f"stderr> {line}")
+
+            if p.returncode != 0:
+                raise RuntimeError(f"failed with exit code {p.returncode}")
+
+        logging.info(f"{count} emails sent to {script_path}")
+
     def search(self, search_conditions):
         """
         See https://tools.ietf.org/html/rfc3501#section-6.4.4
@@ -241,6 +275,7 @@ def run_rules(mailbox, rules):
         'mark_read': mailbox.mark_read,
         'unsubscribe': attempt_unsubscribe,
         'echo': mailbox.echo,
+        'run_script': mailbox.run_script,
     }
 
     for rule in rules['rules']:

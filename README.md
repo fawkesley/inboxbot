@@ -13,6 +13,8 @@ rules:
     action: "delete"
 ```
 
+See [`rules.yml.example`](https://github.com/paulfurley/inboxbot/blob/master/rules.yml.example) for more examples.
+
 ## Install
 
 You'll need to run in a virtualenv:

@@ -13,3 +13,11 @@ rules:
       older_than_days: 3
       subject: "[updown alert]"
     action: "delete"
+
+  - search:
+      folder: "INBOX"
+      from: "bank-statements@example.com"
+      subject: "Your latest statement"
+    action:
+      name: "run_script"
+      script_path: "/usr/local/bin/parse_statement_from_email"
