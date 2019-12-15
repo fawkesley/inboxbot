@@ -87,7 +87,13 @@ class Mailbox():
         self.c = imaplib.IMAP4_SSL(host)
 
         self.c.login(username, password)
-        logging.debug(self.c.list())
+        status, folders = self.c.list()
+
+        if status != "OK":
+            raise RuntimeError(status)
+
+        for folder in folders:
+            logging.debug(f"folder: {folder}")
 
     def delete(self, message_set):
         self.c.select(message_set.folder)
@@ -115,7 +121,7 @@ class Mailbox():
 
         search_string = str(SearchStringBuilder(search_conditions))
 
-        logging.debug(search_string)
+        logging.debug(f"search string: {search_string}")
 
         typ, msgnums = self.c.search(None, search_string)
         assert typ == 'OK', typ
@@ -164,10 +170,10 @@ def main():
 
     with io.open('rules.yml', 'rb') as f:
         rules = yaml.load(f)
-        logging.debug(rules)
+        logging.debug(f"rules: {rules}")
 
         for rule in rules['rules']:
-            logging.debug(rule)
+            logging.debug(f"running rule: {rule}")
 
             search_results = mailbox.search(rule['search'])
 
