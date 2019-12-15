@@ -9,6 +9,8 @@ import email.policy
 import imaplib
 import logging
 import os
+import shlex
+import subprocess
 import sys
 
 from email.parser import BytesParser
@@ -116,7 +118,7 @@ class Mailbox():
 
     def echo(self, message_set):
         count = 0
-        for email_message in self.load_messages(message_set):
+        for email_message in self.load_email_messages(message_set):
             count += 1
             print("----------")
             print(f"From: {email_message['from']}")
@@ -129,6 +131,38 @@ class Mailbox():
                 print(f"\n{body}...")
 
         logging.info(f"{count} emails echoed")
+
+    def run_script(self, message_set, script_path):
+        # TODO: move these out of Mailbox: they don't belong here
+
+        count = 0
+        for email_bytes in self.load_raw_emails(message_set):
+            count += 1
+
+            logging.info(f"sending email to {script_path}")
+            p = subprocess.Popen(
+                shlex.split(script_path),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            try:
+                stdout, stderr = p.communicate(email_bytes, timeout=15)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                stdout, stderr = p.communicate()
+
+            for line in stdout.decode("utf-8").splitlines():
+                logging.info(f"stdout> {line}")
+
+            for line in stderr.decode("utf-8").splitlines():
+                logging.info(f"stderr> {line}")
+
+            if p.returncode != 0:
+                raise RuntimeError(f"failed with exit code {p.returncode}")
+
+        logging.info(f"{count} emails sent to {script_path}")
 
     def search(self, search_conditions):
         """
@@ -154,7 +188,21 @@ class Mailbox():
             len(message_set), message_set))
         return message_set
 
-    def load_messages(self, message_set):
+    def load_email_messages(self, message_set):
+        """
+        load_email_messages yields an EmailMessage for each email defined in message_set
+        """
+        parser = BytesParser(policy=email.policy.default)
+
+        for email_bytes in self.load_raw_emails(message_set):
+            yield parser.parsebytes(text=email_bytes)
+
+    def load_raw_emails(self, message_set):
+        """
+        load_raw_emails yields a slice of bytes for the raw content of each email defined
+        in message_set.
+        """
+
         self.c.select(message_set.folder)
 
         for message_number in message_set.message_numbers:
@@ -162,10 +210,7 @@ class Mailbox():
             type_, crappy_data = self.c.fetch(message_number, '(RFC822)')
             assert type_ == 'OK', type_
 
-            parser = BytesParser(policy=email.policy.default)
-            email_message = parser.parsebytes(text=crappy_data[0][1])
-
-            yield email_message
+            yield crappy_data[0][1]
 
 
 def main():
@@ -230,6 +275,7 @@ def run_rules(mailbox, rules):
         'mark_read': mailbox.mark_read,
         'unsubscribe': attempt_unsubscribe,
         'echo': mailbox.echo,
+        'run_script': mailbox.run_script,
     }
 
     for rule in rules['rules']:
@@ -237,12 +283,25 @@ def run_rules(mailbox, rules):
 
         search_results = mailbox.search(rule['search'])
 
+        action = rule.get("action")
+        if action is None:
+            logging.warning("no action for rule")
+            continue
+
+        elif isinstance(action, str):
+            action_name = action
+            action_kwargs = {}
+
+        elif isinstance(action, dict):
+            action_name = action.pop("name")
+            action_kwargs = action
+
         try:
-            action_func = ACTIONS[rule['action']]
+            action_func = ACTIONS[action_name]
         except KeyError:
             raise NotImplementedError(rule['action'])
         else:
-            action_func(search_results)
+            action_func(search_results, **action_kwargs)
 
 
 def attempt_unsubscribe(message_set):
