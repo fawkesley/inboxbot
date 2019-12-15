@@ -3,13 +3,16 @@
 # Thanks https://gist.github.com/robulouski/7441883
 
 import datetime
+import io
+import email
+import email.policy
 import imaplib
 import logging
-import email
-import io
+import os
+import sys
 
 from email.parser import BytesParser
-import email.policy
+from pathlib import Path, PurePath
 
 import yaml
 
@@ -168,16 +171,60 @@ class Mailbox():
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
-    with io.open('credentials.yml', 'rb') as f:
-        credentials = yaml.load(f)
-        print(credentials)
+    config_dir = get_config_path()
 
-    mailbox = Mailbox(
-        credentials['hostname'],
-        credentials['username'],
-        credentials['password']
-    )
+    account_dirs = list(get_account_dirs(config_dir))
+    if not account_dirs:
+        print("ERROR: no config found.")
+        print(f"create a subdirectory in {config_dir} containing rules.yml, credentials.yml")
+        sys.exit(1)
 
+    for account_dir in account_dirs:
+        logging.info(f"running rules from {account_dir}")
+
+        with io.open(account_dir.joinpath("credentials.yml"), "rb") as f:
+            credentials = yaml.load(f)
+
+        with io.open(account_dir.joinpath("rules.yml"), "rb") as f:
+            rules = yaml.load(f)
+            logging.debug(f"rules: {rules}")
+
+        mailbox = Mailbox(
+            credentials['hostname'],
+            credentials['username'],
+            credentials['password']
+        )
+
+        run_rules(mailbox, rules)
+
+
+def get_config_path():
+    """
+    returns a Path from the environment variable XDG_CONFIG_HOME or ~/.config if unset
+    """
+
+    try:
+        return PurePath(os.environ["XDG_CONFIG_HOME"])
+    except KeyError:
+        return Path.home().joinpath(".config", "inboxbot", "accounts.d")
+
+
+def get_account_dirs(config_dir):
+    """
+    get_account_dirs returns subdirectories of ${XDG_CONFIG_HOME}/inboxbot/accounts.d
+    (defaulting to ~/.config/)
+    """
+
+    try:
+        for fn in os.listdir(config_dir):
+            if os.path.isdir(config_dir.joinpath(fn)) and ".disabled" not in fn:
+                yield config_dir.joinpath(fn)
+
+    except FileNotFoundError:
+        return
+
+
+def run_rules(mailbox, rules):
     ACTIONS = {
         'delete': mailbox.delete,
         'mark_read': mailbox.mark_read,
@@ -185,21 +232,17 @@ def main():
         'echo': mailbox.echo,
     }
 
-    with io.open('rules.yml', 'rb') as f:
-        rules = yaml.load(f)
-        logging.debug(f"rules: {rules}")
+    for rule in rules['rules']:
+        logging.debug(f"running rule: {rule}")
 
-        for rule in rules['rules']:
-            logging.debug(f"running rule: {rule}")
+        search_results = mailbox.search(rule['search'])
 
-            search_results = mailbox.search(rule['search'])
-
-            try:
-                action_func = ACTIONS[rule['action']]
-            except KeyError:
-                raise NotImplementedError(rule['action'])
-            else:
-                action_func(search_results)
+        try:
+            action_func = ACTIONS[rule['action']]
+        except KeyError:
+            raise NotImplementedError(rule['action'])
+        else:
+            action_func(search_results)
 
 
 def attempt_unsubscribe(message_set):
