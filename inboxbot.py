@@ -8,6 +8,9 @@ import logging
 import email
 import io
 
+from email.parser import BytesParser
+import email.policy
+
 import yaml
 
 
@@ -134,9 +137,10 @@ class Mailbox():
             type_, crappy_data = self.c.fetch(message_number, '(RFC822)')
             assert type_ == 'OK', type_
 
-            msg = email.message_from_bytes(crappy_data[0][1])
+            parser = BytesParser(policy=email.policy.default)
+            email_message = parser.parsebytes(text=crappy_data[0][1])
 
-            yield msg
+            yield email_message
 
 
 def main():
