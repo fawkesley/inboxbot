@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+
+import email.policy
+import re
+import sys
+
+import lxml.html
+
+from datetime import datetime
+from email.parser import BytesParser
+
+
+def main():
+    parser = BytesParser(policy=email.policy.default)
+
+    email_bytes = sys.stdin.buffer.read()
+
+    eml = parser.parsebytes(text=email_bytes)
+    print("Got email!")
+    print(f"from: {eml['from']}")
+    print(f"to: {eml['to']}")
+    print(f"subject: {eml['subject']}")
+
+    html_body = eml.get_body(preferencelist=('html',))
+    if html_body is None:
+        raise RuntimeError("no html body")
+
+    body = html_body.get_content()
+    # print(f"\n{body}...")
+
+    parsed = parse_html_body(body)
+    print("\n----------")
+    from pprint import pprint
+    pprint(parsed)
+    print("\n----------")
+
+
+def parse_html_body(html_body):
+    root = lxml.html.fromstring(html_body)
+
+    return {
+        "name": parse_name(root),
+        "phone": parse_phone(root),
+        "date": parse_date(root),
+        "game_slug": parse_game_slug(root),
+        "net_price": parse_net_price(root),
+    }
+
+
+def parse_name(root):
+    """
+    <td align="left" style="...">
+     Lead Traveler Name: <span style="font-weight:bold;">John Doe</span>
+    </td>
+    """
+
+    spans = root.xpath('//td[contains(text(), "Lead Traveler Name:")]/span')
+    assert len(spans) == 1
+
+    return spans[0].text_content().strip()
+
+
+def parse_date(root):
+    """
+    <td align="left" style="...">
+    Travel Date: <span style="font-weight:bold;">Sat, Nov 09, 2019</span>
+    </td>
+    """
+
+    spans = root.xpath('//td[contains(text(), "Travel Date:")]/span')
+    assert len(spans) == 1
+
+    return datetime.strptime(spans[0].text_content(), "%a, %b %d, %Y").date()
+
+
+def parse_phone(root):
+    """
+    <td align="left" style="...">
+    Phone: <span style="color:#666666;"> (Alternate Phone)0776000123 </span>
+    <a href="https://www.tripadvisor.com/ ... target="_blank" style="..."
+       alias="CustomerMessageLink">Send the customer a message.</a>
+    </td>
+
+    OR:
+    <span style="color:#666666"> (Alternate Phone)CH+<span class="il">41</span> 70000007 </span>
+    """
+
+    tds = root.xpath('//td[contains(text(), "Phone:")]')
+    assert len(tds) == 1
+
+    line = tds[0].text_content().strip()
+    pattern = re.compile(r'(?P<phone>\+?\d+ ?\d+)')
+    match = pattern.search(line)
+    if match is None:
+        raise RuntimeError(f"can't parse phone number from {line}")
+
+    return match.group('phone').replace(" ", "")
+
+
+def parse_game_slug(root):
+    """
+    <td align="left" style="...">
+     Product Code: <span style="color:#666666;">158392P1 </span>
+    </td>
+    """
+
+    spans = root.xpath('//td[contains(text(), "Product Code:")]/span')
+    assert len(spans) == 1
+
+    product_code = spans[0].text_content().strip()
+
+    lookup = {
+        "158392P1": "liverpool-the-grand-voyage",
+        "158392P2": "liverpool-the-two-cathedrals",
+    }
+
+    try:
+        return lookup[product_code]
+    except KeyError:
+        raise ValueError(f"Don't know product code {product_code}")
+
+
+def parse_net_price(root):
+    """
+    <td align="left" style="...">
+    Net Rate: <span style="color:#666666;">GBP £7.99</span>
+    </td>
+
+    """
+
+    spans = root.xpath('//td[contains(text(), "Net Rate:")]/span')
+    assert len(spans) == 1
+
+    line = spans[0].text_content()
+
+    pattern = re.compile(r'GBP £(?P<amount>\d+\.\d\d)')
+    match = pattern.search(line)
+    if match is None:
+        raise RuntimeError(f"can't parse price from {line}")
+
+    return match.group('amount')
+
+
+if __name__ == "__main__":
+    main()
