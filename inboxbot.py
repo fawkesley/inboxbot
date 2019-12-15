@@ -172,7 +172,9 @@ class Mailbox():
         """
 
         folder = search_conditions.pop('folder')
-        self.c.select(folder)
+        status, other = self.c.select(folder)
+        if status != "OK":
+            raise RuntimeError(f"{status} {other}")
 
         search_string = str(SearchStringBuilder(search_conditions))
 
