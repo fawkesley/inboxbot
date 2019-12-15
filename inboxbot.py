@@ -116,7 +116,7 @@ class Mailbox():
 
     def echo(self, message_set):
         count = 0
-        for email_message in self.load_messages(message_set):
+        for email_message in self.load_email_messages(message_set):
             count += 1
             print("----------")
             print(f"From: {email_message['from']}")
@@ -154,7 +154,21 @@ class Mailbox():
             len(message_set), message_set))
         return message_set
 
-    def load_messages(self, message_set):
+    def load_email_messages(self, message_set):
+        """
+        load_email_messages yields an EmailMessage for each email defined in message_set
+        """
+        parser = BytesParser(policy=email.policy.default)
+
+        for email_bytes in self.load_raw_emails(message_set):
+            yield parser.parsebytes(text=email_bytes)
+
+    def load_raw_emails(self, message_set):
+        """
+        load_raw_emails yields a slice of bytes for the raw content of each email defined
+        in message_set.
+        """
+
         self.c.select(message_set.folder)
 
         for message_number in message_set.message_numbers:
@@ -162,10 +176,7 @@ class Mailbox():
             type_, crappy_data = self.c.fetch(message_number, '(RFC822)')
             assert type_ == 'OK', type_
 
-            parser = BytesParser(policy=email.policy.default)
-            email_message = parser.parsebytes(text=crappy_data[0][1])
-
-            yield email_message
+            yield crappy_data[0][1]
 
 
 def main():
