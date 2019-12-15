@@ -9,6 +9,8 @@ import email.policy
 import imaplib
 import logging
 import os
+import shlex
+import subprocess
 import sys
 
 from email.parser import BytesParser
@@ -127,6 +129,36 @@ class Mailbox():
             if body_email_message is not None:
                 body = body_email_message.get_content()
                 print(f"\n{body}...")
+            else:
+                print("[no text body found]")
+
+        logging.info(f"{count} emails echoed")
+
+    def run_script(self, message_set, script_path):
+        # TODO: move these out of Mailbox: they don't belong here
+
+        count = 0
+        for email_message in self.load_messages(message_set):
+            count += 1
+            proc = subprocess.Popen(
+                shlex.split(script_path),
+                stdin=subprocess.PIPE,
+            )
+            proc.communicate(email_message.get_bytes())
+
+            raise NotImplementedError(f"running {script_path}")
+
+            # print("----------")
+            # print(f"From: {email_message['from']}")
+            # print(f"To: {email_message['to']}")
+            # print(f"Subject: {email_message['subject']}")
+
+            # body_email_message = email_message.get_body(preferencelist=('plain',))
+            # if body_email_message is not None:
+            #     body = body_email_message.get_content()
+            #     print(f"\n{body}...")
+            # else:
+            #     print("[no text body found]")
 
         logging.info(f"{count} emails echoed")
 
@@ -136,7 +168,9 @@ class Mailbox():
         """
 
         folder = search_conditions.pop('folder')
-        self.c.select(folder)
+        status, other = self.c.select(folder)
+        if status != "OK":
+            raise RuntimeError(f"{status} {other}")
 
         search_string = str(SearchStringBuilder(search_conditions))
 
@@ -230,6 +264,7 @@ def run_rules(mailbox, rules):
         'mark_read': mailbox.mark_read,
         'unsubscribe': attempt_unsubscribe,
         'echo': mailbox.echo,
+        'run_script': mailbox.run_script,
     }
 
     for rule in rules['rules']:
@@ -237,12 +272,25 @@ def run_rules(mailbox, rules):
 
         search_results = mailbox.search(rule['search'])
 
+        action = rule.get("action")
+        if action is None:
+            logging.warning("no action for rule")
+            continue
+
+        elif isinstance(action, str):
+            action_name = action
+            action_kwargs = {}
+
+        elif isinstance(action, dict):
+            action_name = action.pop("name")
+            action_kwargs = action
+
         try:
-            action_func = ACTIONS[rule['action']]
+            action_func = ACTIONS[action_name]
         except KeyError:
             raise NotImplementedError(rule['action'])
         else:
-            action_func(search_results)
+            action_func(search_results, **action_kwargs)
 
 
 def attempt_unsubscribe(message_set):
