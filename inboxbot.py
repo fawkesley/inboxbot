@@ -31,19 +31,6 @@ class MessageSet():
         return '{} - {}'.format(self.folder, ' '.join(self.message_numbers))
 
 
-class SearchResults():
-    def __init__(self, message_numbers, lazy_load_messages):
-        self.__message_numbers = message_numbers
-        self.__lazy_load_messages = lazy_load_messages
-
-    def message_set(self):
-        return MessageSet(self.__folder, self.__message_numbers)
-
-    @property
-    def messages(self):
-        return self.__lazy_load_messages()
-
-
 class SearchStringBuilder():
     def __init__(self, search_conditions):
 
