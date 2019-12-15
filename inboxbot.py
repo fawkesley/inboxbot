@@ -116,6 +116,8 @@ class Mailbox():
             if body_email_message is not None:
                 body = body_email_message.get_content()
                 print(f"\n{body}...")
+            else:
+                print("[no text body found]")
 
         logging.info(f"{count} emails echoed")
 
