@@ -111,6 +111,22 @@ class Mailbox():
             logging.info("SEEN {}: {}".format(message_set.folder, num))
             self.c.store(num, '+FLAGS', '\\Seen')
 
+    def echo(self, message_set):
+        count = 0
+        for email_message in self.load_messages(message_set):
+            count += 1
+            print("----------")
+            print(f"From: {email_message['from']}")
+            print(f"To: {email_message['to']}")
+            print(f"Subject: {email_message['subject']}")
+
+            body_email_message = email_message.get_body(preferencelist=('plain',))
+            if body_email_message is not None:
+                body = body_email_message.get_content()
+                print(f"\n{body}...")
+
+        logging.info(f"{count} emails echoed")
+
     def search(self, search_conditions):
         """
         See https://tools.ietf.org/html/rfc3501#section-6.4.4
@@ -166,6 +182,7 @@ def main():
         'delete': mailbox.delete,
         'mark_read': mailbox.mark_read,
         'unsubscribe': attempt_unsubscribe,
+        'echo': mailbox.echo,
     }
 
     with io.open('rules.yml', 'rb') as f:
@@ -176,10 +193,6 @@ def main():
             logging.debug(f"running rule: {rule}")
 
             search_results = mailbox.search(rule['search'])
-
-            for message in mailbox.load_messages(search_results):
-                logging.debug('{} {}'.format(
-                    message['from'], message['subject']))
 
             try:
                 action_func = ACTIONS[rule['action']]
