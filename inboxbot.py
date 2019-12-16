@@ -337,7 +337,7 @@ def run_rules(mailbox, rules):
             try:
                 action_func = ACTIONS[action_name]
             except KeyError:
-                raise NotImplementedError(rule['action'])
+                raise NotImplementedError(f"action isn't implemented: {action_name}")
             else:
                 action_func(search_results, **action_kwargs)
 
