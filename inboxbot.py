@@ -288,25 +288,28 @@ def run_rules(mailbox, rules):
 
         search_results = mailbox.search(rule['search'])
 
-        action = rule.get("action")
-        if action is None:
-            logging.warning("no action for rule")
-            continue
-
-        elif isinstance(action, str):
-            action_name = action
-            action_kwargs = {}
-
-        elif isinstance(action, dict):
-            action_name = action.pop("name")
-            action_kwargs = action
-
-        try:
-            action_func = ACTIONS[action_name]
-        except KeyError:
-            raise NotImplementedError(rule['action'])
+        if "action" in rule:
+            actions = [rule["action"]]
+        elif "actions" in rule:
+            actions = rule["actions"]
         else:
-            action_func(search_results, **action_kwargs)
+            raise ValueError("every rule needs `action` or `actions`")
+
+        for action in actions:
+            if isinstance(action, str):
+                action_name = action
+                action_kwargs = {}
+
+            elif isinstance(action, dict):
+                action_name = action.pop("name")
+                action_kwargs = action
+
+            try:
+                action_func = ACTIONS[action_name]
+            except KeyError:
+                raise NotImplementedError(rule['action'])
+            else:
+                action_func(search_results, **action_kwargs)
 
 
 def attempt_unsubscribe(message_set):
