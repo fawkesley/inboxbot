@@ -12,6 +12,7 @@ import os
 import shlex
 import subprocess
 import sys
+import smtplib
 
 from email.parser import BytesParser
 from pathlib import Path, PurePath
@@ -75,8 +76,8 @@ class SearchStringBuilder():
 
 
 class Mailbox():
-    def __init__(self, host, username, password):
-        self.c = imaplib.IMAP4_SSL(host)
+    def __init__(self, imap_hostname, smtp_hostname, username, password):
+        self.c = imaplib.IMAP4_SSL(imap_hostname)
 
         self.c.login(username, password)
         status, folders = self.c.list()
@@ -86,6 +87,12 @@ class Mailbox():
 
         for folder in folders:
             logging.debug(f"folder: {folder}")
+
+        if smtp_hostname:
+            self.smtp = smtplib.SMTP_SSL(smtp_hostname)
+            self.smtp.login(username, password)
+        else:
+            self.smtp = None
 
     def delete(self, message_set):
         self.c.select(message_set.folder)
@@ -238,11 +245,7 @@ def main():
             rules = yaml.load(f)
             logging.debug(f"rules: {rules}")
 
-        mailbox = Mailbox(
-            credentials['hostname'],
-            credentials['username'],
-            credentials['password']
-        )
+        mailbox = Mailbox(**credentials)
 
         run_rules(mailbox, rules)
 
