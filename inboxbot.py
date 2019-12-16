@@ -12,8 +12,11 @@ import os
 import shlex
 import subprocess
 import sys
+import smtplib
 
+from email.message import EmailMessage
 from email.parser import BytesParser
+
 from pathlib import Path, PurePath
 
 import yaml
@@ -75,8 +78,8 @@ class SearchStringBuilder():
 
 
 class Mailbox():
-    def __init__(self, host, username, password):
-        self.c = imaplib.IMAP4_SSL(host)
+    def __init__(self, imap_hostname, smtp_hostname, username, password):
+        self.c = imaplib.IMAP4_SSL(imap_hostname)
 
         self.c.login(username, password)
         status, folders = self.c.list()
@@ -86,6 +89,12 @@ class Mailbox():
 
         for folder in folders:
             logging.debug(f"folder: {folder}")
+
+        if smtp_hostname:
+            self.smtp = smtplib.SMTP_SSL(smtp_hostname)
+            self.smtp.login(username, password)
+        else:
+            self.smtp = None
 
     def delete(self, message_set):
         self.c.select(message_set.folder)
@@ -166,6 +175,30 @@ class Mailbox():
 
         logging.info(f"{count} emails sent to {script_path}")
 
+    def forward(self, message_set, to, from_address):
+        count = 0
+        for email_message in self.load_email_messages(message_set):
+            count += 1
+
+            msg = EmailMessage()
+            msg["subject"] = f"Fwd: {email_message['subject']}"
+            msg["to"] = to
+            msg["from"] = from_address
+
+            msg.set_content("Please see attached email.")
+
+            msg.add_attachment(
+                email_message.as_bytes(),
+                maintype="message",
+                subtype="rfc822",
+                filename=f"{email_message['subject']}.eml",
+            )
+
+            logging.info(f"forwarding email to {to}: email_message['subject']")
+            self.smtp.send_message(msg)
+
+        logging.info(f"{count} emails forwarded to {to}")
+
     def search(self, search_conditions):
         """
         See https://tools.ietf.org/html/rfc3501#section-6.4.4
@@ -238,11 +271,7 @@ def main():
             rules = yaml.load(f)
             logging.debug(f"rules: {rules}")
 
-        mailbox = Mailbox(
-            credentials['hostname'],
-            credentials['username'],
-            credentials['password']
-        )
+        mailbox = Mailbox(**credentials)
 
         run_rules(mailbox, rules)
 
@@ -281,6 +310,7 @@ def run_rules(mailbox, rules):
         'echo': mailbox.echo,
         'dump': mailbox.dump,
         'run_script': mailbox.run_script,
+        'forward': mailbox.forward,
     }
 
     for rule in rules['rules']:
@@ -307,7 +337,7 @@ def run_rules(mailbox, rules):
             try:
                 action_func = ACTIONS[action_name]
             except KeyError:
-                raise NotImplementedError(rule['action'])
+                raise NotImplementedError(f"action isn't implemented: {action_name}")
             else:
                 action_func(search_results, **action_kwargs)
 
